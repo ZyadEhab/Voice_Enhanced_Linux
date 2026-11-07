@@ -1,0 +1,8 @@
+sounddevice
+numpy
+faster-whisper
+sentence-transformers
+psutil
+arabic-reshaper
+python-bidi
+pytest
