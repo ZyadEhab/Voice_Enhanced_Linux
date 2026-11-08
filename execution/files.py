@@ -32,6 +32,10 @@ MESSAGES = {
         "exists": "{name} already exists.",
         "list_empty": "Your workspace is empty.",
         "list_result": "You have {count} items: {names}.",
+        "not_found": "I could not find {name}.",
+        "renamed": "{old} was renamed to {new}.",
+        "deleted": "{name} was deleted.",
+        "folder_not_empty": "Folder {name} is not empty, so I did not delete it.",
         "failed": "The operation failed.",
     },
     "ar": {
@@ -46,6 +50,10 @@ MESSAGES = {
         "exists": "{name} موجود بالفعل.",
         "list_empty": "مساحة العمل فارغة.",
         "list_result": "لديك {count} عناصر: {names}.",
+        "not_found": "لم أجد {name}.",
+        "renamed": "تمت إعادة تسمية {old} إلى {new}.",
+        "deleted": "تم حذف {name}.",
+        "folder_not_empty": "المجلد {name} ليس فارغا، لذلك لم أحذفه.",
         "failed": "فشلت العملية.",
     },
 }
@@ -175,5 +183,86 @@ def create_folder(name, language: str = "en") -> OperationResult:
         return _fail(language, "failed")
     return OperationResult(
         True, _msg(language, "folder_created", name=name.strip()), [name.strip()]
+    )
+ 
+ 
+# --------------------------------------------------------------------------
+# Week 3: rename and delete
+# --------------------------------------------------------------------------
+def _find_existing(name, language: str):
+    """Find an existing item inside the workspace.
+ 
+    "notes" also matches "notes.txt", because create_file adds .txt.
+    Returns (path, None) or (None, error result).
+    """
+    problem = validate_name(name)
+    if problem:
+        return None, _fail(language, problem)
+    name = name.strip()
+    candidates = [name]
+    if not Path(name).suffix:
+        candidates.append(name + ".txt")
+    for candidate in candidates:
+        path = resolve_in_workspace(candidate)
+        if path is None:
+            return None, _fail(language, "outside")
+        if path.exists():
+            return path, None
+    return None, _fail(language, "not_found", name=name)
+ 
+ 
+def rename_file(old_name, new_name, language: str = "en") -> OperationResult:
+    """Rename a file or folder inside the workspace. Never overwrites."""
+    try:
+        ensure_workspace()
+        source, error = _find_existing(old_name, language)
+        if error:
+            return error
+ 
+        problem = validate_name(new_name)
+        if problem:
+            return _fail(language, problem)
+        new_name = new_name.strip()
+        # "rename notes to report" keeps the file's extension (.txt)
+        if source.is_file() and not Path(new_name).suffix:
+            new_name += source.suffix
+ 
+        target, error = _checked_path(new_name, language)
+        if error:
+            return error
+        # Path.rename silently overwrites on Linux, so check first.
+        if target.exists() or target.is_symlink():
+            return _fail(language, "exists", name=new_name)
+ 
+        old_display = source.name
+        source.rename(target)
+    except OSError:
+        return _fail(language, "failed")
+    message = _msg(language, "renamed", old=old_display, new=new_name)
+    return OperationResult(True, message, [new_name])
+ 
+ 
+def delete_file(name, language: str = "en") -> OperationResult:
+    """Delete a file, or an EMPTY folder. Never deletes a folder's contents.
+ 
+    This function only deletes. Asking the user to confirm is the job of the
+    validation layer and the GUI (DELETE_FILE needs confirmation).
+    """
+    try:
+        ensure_workspace()
+        path, error = _find_existing(name, language)
+        if error:
+            return error
+        deleted_name = path.name
+        if path.is_dir():
+            if any(path.iterdir()):
+                return _fail(language, "folder_not_empty", name=deleted_name)
+            path.rmdir()
+        else:
+            path.unlink()
+    except OSError:
+        return _fail(language, "failed")
+    return OperationResult(
+        True, _msg(language, "deleted", name=deleted_name), [deleted_name]
     )
  
