@@ -28,9 +28,11 @@ class TranscriptionError(Exception):
 
 
 # ---- The agreed contract (matches Section 9 of PROJECT_CONTEXT.md) ----
-def transcribe(audio) -> tuple[str, str]:
+def transcribe(audio, language: Optional[str] = None) -> tuple[str, str]:
     """
-    audio : numpy float32 array, 16 kHz, mono (see constants above).
+    audio    : numpy float32 array, 16 kHz, mono (see constants above).
+    language : optional hint "en" / "ar" (e.g. from the GUI language switch). None = auto-detect.
+               Added in Task 3; callers that pass only `audio` keep working.
 
     Returns (text, language):
       text     : str, never None. Stripped, single spaces. Raw Whisper output:
@@ -44,7 +46,8 @@ def transcribe(audio) -> tuple[str, str]:
     Blocking call: run it in a worker thread, not in the Tkinter thread.
     The Whisper model is loaded once on first use (first call is slower).
     """
-    raise NotImplementedError
+    from .transcriber import transcribe as _impl   # lazy: keeps this file light to import
+    return _impl(audio, language)
 
 
 # ---- Optional richer result for the GUI status bar / logs / tests ----
@@ -58,9 +61,10 @@ class TranscriptionResult:
     reason: Optional[str] = None               # "silence" | "too_short" | "unsupported_language" | None
 
 
-def transcribe_detailed(audio) -> TranscriptionResult:
+def transcribe_detailed(audio, language: Optional[str] = None) -> TranscriptionResult:
     """Same work as transcribe(), but keeps the extra info. transcribe() is a thin wrapper."""
-    raise NotImplementedError
+    from .transcriber import transcribe_detailed as _impl
+    return _impl(audio, language)
 
 
 # ---- Events sent to the GUI queue:  Event(stage="stt", state=..., text=...) ----
