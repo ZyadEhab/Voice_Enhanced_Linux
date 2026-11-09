@@ -2,19 +2,18 @@
 Voice-Enhanced Linux - Main Pipeline Controller (main.py)
 Owner: Role 1 - Team Leader & Linux System Environment (Zyad Ehab)
 
-Wires the agreed pipeline interfaces together:
-Microphone -> transcribe(audio) -> understand(text, language)
-           -> validate(intent) -> execute(intent) -> speak(message, language)
-Communicates with the Tkinter GUI through a thread-safe queue.
-Includes stand-in fallbacks so the pipeline runs before all teammate branches are merged.
+Wires all team modules together, pre-warms AI models into RAM,
+updates the GUI status bar, and launches the Tkinter application:
+Microphone -> STT -> NLP -> Validation -> Execution -> TTS & GUI
 """
 
-import os
 import queue
 import threading
+import time
+import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Any
+from typing import List, Any, Optional
 
 # Ensure safe working folder exists with owner-only permissions (0700 / drwx------)
 SAFE_WORKSPACE = Path.home() / "VoiceLinuxWorkspace"
@@ -24,7 +23,7 @@ def init_safe_workspace() -> Path:
     SAFE_WORKSPACE.chmod(0o700)
     return SAFE_WORKSPACE
 
-# --- Shared Data Structures (Section 5.2 / Section 9) ---
+# --- Shared Data Structures ---
 @dataclass
 class ValidationResult:
     allowed: bool
@@ -37,143 +36,133 @@ class ExecutionResult:
     message: str
     items: List[Any] = field(default_factory=list)
 
-# --- Dynamic Module Imports with Stand-In Fallbacks (Section 12) ---
-try:
-    from stt.recorder import record
-    from stt.transcriber import transcribe
-except ImportError:
-    def record():
-        return b"stand_in_audio"
-    def transcribe(audio):
-        return "show my files", "en"
+# --- Real Module Imports ---
+from stt.recorder import record
+from stt.interface import transcribe
+from nlp.understanding import understand
+from validation.validator import validate
+from execution.runner import execute
+from tts.speaker import speak
+from gui.events import Event, Emit, Confirm
 
-try:
-    from nlp.understanding import understand
-except ImportError:
-    def understand(text: str, language: str = "en") -> dict:
-        return {
-            "text": text,
-            "intent": "LIST_FILES",
-            "params": {},
-            "language": language,
-            "confidence": 0.90,
-            "method": "stand-in",
-            "needs_confirmation": False,
-            "missing": []
-        }
 
-try:
-    from validation.validator import validate
-except ImportError:
-    def validate(intent: dict) -> ValidationResult:
-        if intent.get("intent") == "UNKNOWN":
-            return ValidationResult(False, False, "Unsupported command.")
-        return ValidationResult(True, bool(intent.get("needs_confirmation", False)), "Allowed")
+def prewarm_models() -> None:
+    """Pre-loads faster-whisper and sentence-transformers into RAM before demo starts."""
+    print("[System] Pre-warming AI models into RAM for instant response...")
+    t0 = time.time()
+    try:
+        understand("show my files", "en")
+        print("  -> [NLP] sentence-transformers model loaded in RAM.")
+    except Exception as e:
+        print(f"  -> [NLP] Warm-up note: {e}")
 
-try:
-    from execution.runner import execute
-except ImportError:
-    def execute(intent: dict, confirmed: bool = False, language: str = "en") -> ExecutionResult:
-        ws = init_safe_workspace()
-        return ExecutionResult(True, f"Stand-in executed {intent.get('intent')} in {ws.name}.")
+    try:
+        dummy_audio = np.zeros(8000, dtype=np.float32)
+        transcribe(dummy_audio, language="en")
+        print("  -> [STT] faster-whisper (small) model loaded in RAM.")
+    except Exception as e:
+        print(f"  -> [STT] Warm-up note: {e}")
 
-try:
-    from tts.speaker import speak
-except ImportError:
-    def speak(message: str, language: str = "en"):
-        print(f"[TTS ({language})]: {message}")
+    print(f"[System] All models pre-warmed and ready in {time.time() - t0:.1f}s!")
+
+
+def _build_confirm_prompt(intent_data: dict, language: str) -> str:
+    intent_name = intent_data.get("intent", "")
+    params = intent_data.get("params") or {}
+    target = (
+        params.get("name")
+        or params.get("file")
+        or params.get("folder")
+        or params.get("path")
+        or params.get("app")
+        or params.get("application")
+        or ""
+    )
+    if language == "ar":
+        if intent_name == "DELETE_FILE":
+            return f"هل تريد حذف {target}؟" if target else "هل أنت متأكد من الحذف؟"
+        if intent_name == "CLOSE_APPLICATION":
+            return f"هل تريد إغلاق {target}؟" if target else "هل أنت متأكد من إغلاق التطبيق؟"
+        return f"هل تؤكد تنفيذ {intent_name}؟"
+    else:
+        if intent_name == "DELETE_FILE":
+            return f"Do you want to delete {target}?" if target else "Confirm delete operation?"
+        if intent_name == "CLOSE_APPLICATION":
+            return f"Do you want to close {target}?" if target else "Confirm closing application?"
+        return f"Do you want to run {intent_name}?"
 
 
 class VoicePipelineController:
-    """Main loop orchestrating all pipeline stages on a background worker thread."""
+    """Main pipeline controller connecting all team modules to the GUI."""
 
-    def __init__(self, event_queue: queue.Queue = None, gui_callback=None):
+    def __init__(self, event_queue: Optional[queue.Queue] = None, gui_callback=None):
         self.event_queue = event_queue or queue.Queue()
         self.gui_callback = gui_callback
         self.voice_reply_enabled = True
         init_safe_workspace()
 
-    def emit_event(self, stage: str, state: str, text: str = "", **extra):
-        """Send status events to the GUI through a thread-safe queue (Section 5)."""
-        event = {"stage": stage, "state": state, "text": text, "data": extra}
-        self.event_queue.put(event)
-        if self.gui_callback is not None:
-            self.gui_callback(event)
-
-    def start_voice_cycle(self, confirm_fn=None):
-        """Run a single voice command cycle in a background thread so GUI never blocks."""
-        worker = threading.Thread(
-            target=self.run_pipeline_once,
-            args=(confirm_fn,),
-            daemon=True
-        )
-        worker.start()
-        return worker
-
-    def run_pipeline_once(self, confirm_fn=None) -> ExecutionResult:
+    def __call__(self, emit: Emit, language: str, confirm: Confirm) -> None:
+        """Called directly by gui.app.App in a background worker thread."""
+        lang = language if language in ("en", "ar") else "en"
         try:
             # Stage 1: Microphone capture
-            self.emit_event("stt", "Listening", "Listening for command...")
+            emit(Event("listening", "listening", "Listening for command..."))
             audio = record()
             if audio is None or len(audio) == 0:
-                msg = "No speech detected. Please try again."
-                self.emit_event("stt", "Error", msg)
-                return ExecutionResult(False, msg)
+                msg = "لم يتم التقاط صوت. حاول مرة أخرى." if lang == "ar" else "No speech detected. Please try again."
+                emit(Event("error", "no_speech", msg))
+                return
 
             # Stage 2: Speech-to-Text
-            self.emit_event("stt", "Processing", "Transcribing speech...")
-            text, language = transcribe(audio)
-            if not text:
-                msg = "Could not recognize speech. Please repeat."
-                self.emit_event("stt", "Error", msg)
-                return ExecutionResult(False, msg)
+            emit(Event("listening", "processing", "Transcribing speech..."))
+            text, detected_lang = transcribe(audio, language=lang)
+            text = text.strip(" .!?,؟،")
+            active_lang = detected_lang if detected_lang in ("en", "ar") else lang
 
-            self.emit_event("command", "Completed", text, language=language)
+            if not text or not text.strip():
+                msg = "لم أتمكن من التعرف على الكلام. يرجى الإعادة." if active_lang == "ar" else "Could not recognize speech. Please repeat."
+                emit(Event("error", "unrecognized", msg))
+                return
+
+            emit(Event("command", active_lang, text))
 
             # Stage 3: Command Understanding (NLP)
-            intent_data = understand(text, language)
+            intent_data = understand(text, active_lang)
             intent_name = intent_data.get("intent", "UNKNOWN")
-            self.emit_event("understanding", "Completed", intent_name, intent=intent_data)
 
             # Stage 4: Command Validation
             val_res = validate(intent_data)
             if not val_res.allowed:
-                self.emit_event("execution", "Rejected", val_res.reason)
-                if self.voice_reply_enabled:
-                    speak(val_res.reason, language)
-                self.emit_event("stt", "Ready", "Ready")
-                return ExecutionResult(False, val_res.reason)
+                emit(Event("understanding", "rejected", intent_name))
+                emit(Event("execution", "rejected", val_res.reason))
+                emit(Event("result", active_lang, val_res.reason))
+                return
 
-            # Confirmation gate for dangerous commands (DELETE_FILE / CLOSE_APPLICATION)
             if val_res.needs_confirmation:
-                self.emit_event("execution", "Awaiting confirmation", f"Confirm {intent_name}?")
-                approved = confirm_fn(intent_data) if confirm_fn is not None else False
+                emit(Event("understanding", "needs_confirmation", intent_name))
+                emit(Event("execution", "awaiting_confirmation", intent_name))
+                prompt = _build_confirm_prompt(intent_data, active_lang)
+                approved = confirm(prompt) if confirm is not None else False
                 if not approved:
-                    cancel_msg = "Operation cancelled by user."
-                    self.emit_event("execution", "Cancelled", cancel_msg)
-                    if self.voice_reply_enabled:
-                        speak(cancel_msg, language)
-                    self.emit_event("stt", "Ready", "Ready")
-                    return ExecutionResult(False, cancel_msg)
+                    cancel_msg = "تم إلغاء العملية." if active_lang == "ar" else "Operation cancelled by user."
+                    emit(Event("execution", "cancelled", cancel_msg))
+                    emit(Event("result", active_lang, cancel_msg))
+                    return
+            else:
+                emit(Event("understanding", "allowed", intent_name))
 
-            # Stage 5: Linux Operation Execution
-            self.emit_event("execution", "Running", f"Executing {intent_name}...")
-            exec_res = execute(intent_data, confirmed=True, language=language)
-            exec_state = "Completed" if exec_res.success else "Failed"
-            self.emit_event("execution", exec_state, exec_res.message)
+            # Stage 5: Linux Operation Execution (passing both confirmed and language)
+            emit(Event("execution", "running", intent_name))
+            exec_res = execute(intent_data, confirmed=True, language=active_lang)
+            exec_state = "completed" if exec_res.success else "failed"
+            emit(Event("execution", exec_state, exec_res.message))
 
-            # Stage 6: Text-to-Speech Reply
-            if self.voice_reply_enabled and exec_res.message:
-                self.emit_event("stt", "Speaking", exec_res.message)
-                speak(exec_res.message, language)
-
-            self.emit_event("stt", "Ready", "Ready")
-            return exec_res
+            # Stage 6: Result & Voice Reply
+            emit(Event("result", active_lang, exec_res.message))
 
         except Exception as err:
             err_msg = f"Pipeline error: {err}"
-            self.emit_event("stt", "Error", err_msg)
-            return ExecutionResult(False, err_msg)
+            emit(Event("error", "exception", err_msg))
 
 
 if __name__ == "__main__":
@@ -181,16 +170,17 @@ if __name__ == "__main__":
     ws = init_safe_workspace()
     print(f"[System] Safe workspace ready at: {ws} (mode {oct(ws.stat().st_mode & 0o777)})")
 
-    try:
-        import tkinter as tk
-        from gui.app import VoiceLinuxGUI
-        root = tk.Tk()
-        gui = VoiceLinuxGUI(root)
-        controller = VoicePipelineController(gui_callback=gui.on_event)
-        gui.controller = controller
-        root.mainloop()
-    except ImportError:
-        print("[System] GUI module not merged yet. Running single pipeline verification cycle...")
-        controller = VoicePipelineController()
-        result = controller.run_pipeline_once()
-        print(f"[Result] Success={result.success} | Message='{result.message}'")
+    # Pre-warm AI models into RAM so the first voice command responds instantly
+    prewarm_models()
+
+    import tkinter as tk
+    from gui.app import App
+
+    controller = VoicePipelineController()
+    root = tk.Tk()
+    app = App(root, pipeline=controller, speak_fn=speak, workspace=str(ws))
+
+    # Update status bar to display real speech model instead of 'stand-in'
+    app.set_info(model="faster-whisper (small)")
+
+    root.mainloop()
