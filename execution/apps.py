@@ -38,7 +38,7 @@ APPS = {
         "command": "gnome-calculator",
         "process_names": {"gnome-calculator", "gnome-calculato"},
         "labels": {"en": "Calculator", "ar": "الحاسبة"},
-        "aliases": ["calculator", "الحاسبة", "حاسبة", "الة حاسبة"],
+        "aliases": ["calculator", "gnome-calculator", "الحاسبة", "حاسبة", "الة حاسبة"],
     },
     "files": {
         "command": "nautilus",

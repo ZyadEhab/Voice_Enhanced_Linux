@@ -73,7 +73,7 @@ except ImportError:
 try:
     from execution.runner import execute
 except ImportError:
-    def execute(intent: dict) -> ExecutionResult:
+    def execute(intent: dict, confirmed: bool = False, language: str = "en") -> ExecutionResult:
         ws = init_safe_workspace()
         return ExecutionResult(True, f"Stand-in executed {intent.get('intent')} in {ws.name}.")
 
@@ -158,7 +158,7 @@ class VoicePipelineController:
 
             # Stage 5: Linux Operation Execution
             self.emit_event("execution", "Running", f"Executing {intent_name}...")
-            exec_res = execute(intent_data)
+            exec_res = execute(intent_data, confirmed=True, language=language)
             exec_state = "Completed" if exec_res.success else "Failed"
             self.emit_event("execution", exec_state, exec_res.message)
 
