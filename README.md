@@ -3,7 +3,8 @@
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Platform](https://img.shields.io/badge/Platform-Ubuntu%2026.04%20LTS-E95420?style=for-the-badge&logo=ubuntu)
 ![Course](https://img.shields.io/badge/Course-Operating%20Systems-purple?style=for-the-badge)
-![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge)
+![Status](https://img.shields.io/badge/Status-Complete-success?style=for-the-badge)
+![Tests](https://img.shields.io/badge/Tests-232%20Passed%20%7C%203%20Skipped-brightgreen?style=for-the-badge)
 
 **Voice-Enhanced Linux** is a modular, bilingual (English & Arabic) voice interaction layer designed for **Ubuntu Linux**. It allows users to control operating system tasks—such as file management, application control, and system monitoring—entirely by voice, bridging natural spoken language and Linux system calls through a secure, multi-stage pipeline and a responsive graphical interface.
 
@@ -27,13 +28,14 @@
 
 * **🌐 Bilingual Voice Interaction:** Full offline support for both **English** and **Arabic** voice commands with spoken audio feedback via `espeak-ng`.
 * **⚡ Fast Speech-to-Text (STT):** Powered by pre-warmed `faster-whisper` models for low-latency transcription.
-* **🧠 Hybrid NLP Engine:** Combines multilingual semantic embeddings (`sentence-transformers`) with a deterministic keyword-fallback engine for reliable intent classification and parameter extraction.
+* **🧠 Hybrid NLP Engine:** Combines multilingual semantic embeddings (`sentence-transformers`) with a deterministic keyword-fallback engine. If the AI is unsure, the keyword fallback catches colloquialisms (e.g., Egyptian Arabic like *"شوفلي الملفات"*).
+* **🖥️ System Monitoring:** Speak natural commands to check live CPU, RAM, Disk usage, and view the top running processes (powered by `psutil`).
+* **📝 Persistent Command History:** The GUI includes a live `Treeview` table that logs every command with its timestamp, recognized intent, and final execution status (Completed, Rejected, Failed).
 * **🛡️ Security & Sandboxing:** 
   * **Zero Direct Shell Execution:** Spoken text is never executed directly as a shell command; commands run as validated argument lists.
   * **Strict Whitelisting:** Only explicitly allowed applications and system resources can be accessed.
-  * **Multi-Command Guard:** Blocks command chaining and injection characters (`;`, `&`, `and`, `ثم`).
-  * **Destructive Action Protection:** Blocks mass-deletion wildcards (`all`, `كل`) and requires user confirmation before deleting files or closing applications.
-* **🖥️ Modern Tkinter GUI:** Displays live status (`Ready`, `Listening`, `Completed`, `Rejected`), recognized text, extracted intents, execution results, and a persistent **Command History** log.
+  * **Multi-Command Guard:** Blocks command chaining and injection characters (`;`, `&`, `and`, `ثم`). *Note: Smartly allows "and" if it's inside a quoted filename like "rock and roll".*
+  * **Destructive Action Protection:** Blocks mass-deletion wildcards (`all`, `كل`), blocks command options like `-rf` or `~`, and requires a GUI popup confirmation before deleting files or closing applications.
 
 ---
 
@@ -43,7 +45,7 @@ Every voice command passes through 6 sequential stages orchestrated by `main.py`
 
 1. **Voice Input (`stt/recorder.py`):** The user presses the **Listen** button and speaks into the microphone.
 2. **Speech-to-Text (`stt/transcriber.py`):** The `faster-whisper` model converts the recorded audio into Arabic or English text.
-3. **Command Understanding (`nlp/understanding.py`):** The hybrid AI/Keyword engine matches the text to a known intent and extracts required parameters (e.g., `OPEN_APPLICATION` -> `firefox`).
+3. **Command Understanding (`nlp/understanding.py`):** The hybrid AI/Keyword engine matches the text to a known intent and extracts required parameters (e.g., `SHOW_SYSTEM_USAGE` -> `resource: cpu`).
 4. **Command Validation (`validation/validator.py`):** Checks that the intent and target are whitelisted, ensures paths stay inside `~/VoiceLinuxWorkspace`, and triggers confirmation dialogs for dangerous actions.
 5. **Linux Operation (`execution/`):** Runs the approved operation on Ubuntu via Python `os`, `pathlib`, `psutil`, and `subprocess` (`files.py`, `apps.py`, `system_info.py`, `runner.py`).
 6. **GUI & Voice Reply (`gui/` & `tts/`):** Displays the result in the `Tkinter` interface, logs the action in the history table, and speaks the response via `espeak-ng`.
@@ -125,5 +127,8 @@ Clone the repository and run the setup script (or install via `venv`):
 *Note: On launch, the system pre-warms the STT and NLP models in the background. Once the status badge turns green (**Ready**), click **Listen** and speak your command.*
 
 ### 4. Running Tests
+We have a comprehensive test suite covering all modules (NLP, Validation, Execution, GUI, and STT mocks). To run all tests, execute:
 
-    pytest
+    python -m pytest -v
+
+*(Expected output: 232 passed, 3 skipped)*
