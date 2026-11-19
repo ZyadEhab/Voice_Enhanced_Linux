@@ -1,24 +1,14 @@
 # nlp/intents.py
 #
 # Data only: no logic lives here. nlp/nlp.py reads everything below.
-#
-#   SUPPORTED_INTENTS  full example sentences. Used by the semantic matcher
-#                      AND by the keyword fallback (whole-word phrase match).
-#   FALLBACK_RULES     verb / noun cues for the keyword fallback, so that
-#                      "delete notes" or "open the calculator" still work.
-#                      Keep bare verbs OUT of SUPPORTED_INTENTS: one-word
-#                      examples give noisy embeddings in the semantic matcher.
-#   ALLOWED_APPS / ALLOWED_RESOURCES   whitelists, matched as whole words.
 
-# ---------------------------------------------------------------------------
-# The nine core intents with English and Arabic training examples
-# ---------------------------------------------------------------------------
 SUPPORTED_INTENTS = {
     "LIST_FILES": {
         "en": ["show my files", "list files", "display directory",
                "show directory contents", "what files do i have"],
         "ar": ["اعرض ملفاتي", "عرض الملفات", "اعرض الملفات",
-               "اطبع الملفات", "ما هي الملفات الموجودة"]
+               "اطبع الملفات", "ما هي الملفات الموجودة",
+               "وريني ملفاتي", "شوفلي الملفات"]
     },
     "CREATE_FILE": {
         "en": ["create a file", "create file", "make a new file",
@@ -32,8 +22,9 @@ SUPPORTED_INTENTS = {
     },
     "RENAME_FILE": {
         "en": ["rename file", "rename a file", "change file name",
-               "rename notes to report"],
-        "ar": ["غير اسم الملف", "اعادة تسمية الملف", "غير اسم"]
+               "rename notes to report", "rename notes to report file"],
+        "ar": ["غير اسم الملف", "اعادة تسمية الملف", "غير اسم",
+               "غير اسم notes الى report", "غير اسم الملف من notes الى report"]
     },
     "DELETE_FILE": {
         "en": ["delete file", "delete the file", "remove file",
@@ -42,34 +33,39 @@ SUPPORTED_INTENTS = {
     },
     "OPEN_APPLICATION": {
         "en": ["open firefox", "launch browser", "open terminal",
-               "open calculator", "open the calculator", "open text editor"],
+               "open calculator", "open the calculator", "open text editor",
+               "open gedit", "open nautilus", "open files"],
         "ar": ["افتح فايرفوكس", "شغل المتصفح", "افتح التيرمينال",
-               "افتح الحاسبة", "افتح محرر النصوص"]
+               "افتح الحاسبة", "افتح محرر النصوص", "افتح المتصفح",
+               "شغل الحاسبة", "افتح مدير الملفات"]
     },
     "CLOSE_APPLICATION": {
         "en": ["close firefox", "quit browser", "close terminal",
                "close the browser", "close calculator"],
         "ar": ["اغلق فايرفوكس", "اقفل المتصفح", "اغلق التيرمينال",
-               "اغلق الحاسبة"]
+               "اغلق الحاسبة", "اقفل التيرمينال"]
     },
     "SHOW_PROCESSES": {
-        "en": ["show running processes", "list processes", "running programs"],
-        "ar": ["اعرض العمليات", "العمليات الجارية", "عرض البرامج الشغالة"]
+        "en": ["show running processes", "list processes", "running programs",
+               "what is running on my computer", "show tasks", "what's running right now"],
+        "ar": ["اعرض العمليات", "العمليات الجارية", "عرض البرامج الشغالة",
+               "اعرض البرامج المفتوحة"]
     },
     "SHOW_SYSTEM_USAGE": {
         "en": ["how much memory is used", "cpu usage", "disk space",
-               "system usage", "show cpu usage", "memory usage"],
+               "system usage", "show cpu usage", "memory usage", 
+               "how is my ram doing", "how much disk space is left", 
+               "how much storage do i have"],
         "ar": ["كم الذاكرة المستخدمة", "استخدام المعالج", "مساحة القرص",
-               "استهلاك الجهاز"]
+               "استهلاك الجهاز", "اعرض الرام", "ايه استخدام المعالج",
+               "كم المساحة المتبقية على القرص"]
     }
 }
 
 # Intents that must be confirmed by the user before they run
 CONFIRMATION_INTENTS = {"DELETE_FILE", "CLOSE_APPLICATION"}
 
-# ---------------------------------------------------------------------------
 # Allowed applications (EN + AR) and their Ubuntu commands
-# ---------------------------------------------------------------------------
 ALLOWED_APPS = {
     "firefox": "firefox",
     "browser": "firefox",
@@ -88,6 +84,8 @@ ALLOWED_APPS = {
     "مدير الملفات": "nautilus",
     "text editor": "gedit",
     "editor": "gedit",
+    "gedit": "gedit",
+    "nautilus": "nautilus",
     "محرر النصوص": "gedit"
 }
 
@@ -107,20 +105,14 @@ ALLOWED_RESOURCES = {
     "المساحة": "disk"
 }
 
-# ---------------------------------------------------------------------------
-# Keyword-fallback rules
-#   verbs / nouns : cues (single words or short phrases, EN + AR).
-#                   Everything is normalized and matched as WHOLE WORDS.
-#   need_verb / need_noun : which side must be present for the rule to fire.
-#   A cue present on the optional side only raises the confidence.
-# ---------------------------------------------------------------------------
 _APP_NAMES = list(ALLOWED_APPS)
 
 FALLBACK_RULES = {
     "LIST_FILES": {
         "verbs": ["show", "list", "display", "print", "what are",
-                  "what files", "which files",
-                  "اعرض", "عرض", "اطبع", "ما هي", "ماهي"],
+                  "what files", "which files", "give me", "get me",
+                  "اعرض", "عرض", "اطبع", "ما هي", "ماهي",
+                  "شوفلي", "شوف", "وريني", "ورني", "هات", "هاتلي"],
         "nouns": ["files", "directory", "directories", "folder", "folders",
                   "ملفاتي", "الملفات", "ملفات", "المجلد", "المجلدات"],
         "need_verb": True, "need_noun": True,
@@ -164,8 +156,11 @@ FALLBACK_RULES = {
         "verbs": ["show", "list", "display", "اعرض", "عرض"],
         "nouns": ["processes", "process", "running programs",
                   "running processes", "running apps",
+                  "tasks", "task manager", "whats running", "what is running",
                   "العمليات", "عمليات", "العمليات الجارية",
-                  "البرامج الشغالة", "البرامج الجارية"],
+                  "البرامج الشغالة", "البرامج الجارية",
+                  "البرامج المفتوحة", "التطبيقات المفتوحة",
+                  "التطبيقات الشغالة"],
         "need_verb": False, "need_noun": True,
     },
     "SHOW_SYSTEM_USAGE": {
@@ -178,37 +173,27 @@ FALLBACK_RULES = {
     },
 }
 
-# ---------------------------------------------------------------------------
-# Linguistic data used by parameter extraction and the multi-command guard
-# ---------------------------------------------------------------------------
-
-# Words that introduce a file / folder name: "create a file CALLED notes"
 NAME_MARKERS = ["called", "named", "اسمه", "اسمها", "باسم", "المسمى"]
-
-# Words that separate old and new name: "rename notes TO report"
 RENAME_SEPARATORS = ["to", "as", "into", "الى", "إلى"]
-
-# Ignored when measuring how much of the sentence a match explains
 STOPWORDS = [
     "a", "an", "the", "my", "me", "please", "pls", "plz", "kindly", "now",
     "can", "you", "could", "would", "will", "i", "it", "this", "that",
     "to", "of", "for", "is", "are", "called", "named", "thanks", "thank",
     "لو", "سمحت", "من", "فضلك", "الان", "ارجوك", "لي",
 ]
-
-# Skipped when looking for a file name (on top of the command words)
 NAME_FILLER = STOPWORDS + [
     "with", "new", "name", "file", "files", "folder", "folders", "directory",
     "dir", "want", "need", "like", "again", "quickly", "fast", "immediately",
-    "بسرعة",
+    "بسرعة", "all", "every", "كل", "جميع", "الملفات", "ملفات",
     "ملف", "الملف", "مجلد", "المجلد", "جديد", "جديدة", "اسم", "اسمه",
     "اسمها", "باسم", "المسمى",
 ]
-
-# A name that means "everything" is never accepted as a single file name
-BLOCKED_NAMES = ["everything", "all", "كل", "الكل", "كله", "كلشي"]
-
-# Multi-command guard
+BLOCKED_NAMES = ["everything", "all", "كل", "الكل", "كله", "كلشي",
+                 "شيء", "شي", "شيئ", "الملفات", "ملفات", "files"]
+MASS_WORDS = ["everything", "all", "every", "whole", "كل", "الكل", "كله",
+              "كلها", "جميع", "كلشي", "شيء", "شي", "شيئ"]
 CONJUNCTION_WORDS = ["and", "then", "و", "ثم", "وبعدين", "بعدين"]
 CONJUNCTION_PHRASES = [("after", "that"), ("بعد", "ذلك")]
 CONJUNCTION_CHARS = ";&"
+# Words that must NEVER be passed to the semantic matcher
+BLOCKED_PHRASES = ["shutdown", "reboot", "restart", "اطفئ الجهاز", "اقفل الجهاز"]
