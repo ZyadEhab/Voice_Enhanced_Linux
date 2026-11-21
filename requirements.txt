@@ -6,3 +6,4 @@ psutil
 arabic-reshaper
 python-bidi
 pytest
+flet
