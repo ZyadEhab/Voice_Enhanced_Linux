@@ -6,7 +6,7 @@
 ![Status](https://img.shields.io/badge/Status-Complete-success?style=for-the-badge)
 ![Tests](https://img.shields.io/badge/Tests-232%20Passed%20%7C%203%20Skipped-brightgreen?style=for-the-badge)
 
-**Voice-Enhanced Linux** is a modular, bilingual (English & Arabic) voice interaction layer designed for **Ubuntu Linux**. It allows users to control operating system tasks—such as file management, application control, and system monitoring—entirely by voice, bridging natural spoken language and Linux system calls through a secure, multi-stage pipeline and a responsive graphical interface.
+**Voice-Enhanced Linux** is a modular, bilingual (English & Arabic) voice interaction layer designed for **Ubuntu Linux**. It allows users to control operating system tasks—such as file management, application control, and system monitoring—entirely by voice, bridging natural spoken language and Linux system calls through a secure, multi-stage pipeline and dual graphical interfaces (**Tkinter** & **Flet**).
 
 ---
 
@@ -26,16 +26,30 @@
 
 ## ✨ Key Features
 
-* **🌐 Bilingual Voice Interaction:** Full offline support for both **English** and **Arabic** voice commands with spoken audio feedback via `espeak-ng`.
-* **⚡ Fast Speech-to-Text (STT):** Powered by pre-warmed `faster-whisper` models for low-latency transcription.
-* **🧠 Hybrid NLP Engine:** Combines multilingual semantic embeddings (`sentence-transformers`) with a deterministic keyword-fallback engine. If the AI is unsure, the keyword fallback catches colloquialisms (e.g., Egyptian Arabic like *"شوفلي الملفات"*).
-* **🖥️ System Monitoring:** Speak natural commands to check live CPU, RAM, Disk usage, and view the top running processes (powered by `psutil`).
-* **📝 Persistent Command History:** The GUI includes a live `Treeview` table that logs every command with its timestamp, recognized intent, and final execution status (Completed, Rejected, Failed).
-* **🛡️ Security & Sandboxing:** 
-  * **Zero Direct Shell Execution:** Spoken text is never executed directly as a shell command; commands run as validated argument lists.
-  * **Strict Whitelisting:** Only explicitly allowed applications and system resources can be accessed.
-  * **Multi-Command Guard:** Blocks command chaining and injection characters (`;`, `&`, `and`, `ثم`). *Note: Smartly allows "and" if it's inside a quoted filename like "rock and roll".*
-  * **Destructive Action Protection:** Blocks mass-deletion wildcards (`all`, `كل`), blocks command options like `-rf` or `~`, and requires a GUI popup confirmation before deleting files or closing applications.
+- **🌐 Bilingual Voice Interaction:** Full offline support for both **English** and **Arabic** voice commands with spoken audio feedback via `espeak-ng`.
+- **⚡ Fast Speech-to-Text (STT):** Powered by pre-warmed `faster-whisper` models for low-latency transcription.
+- **🧠 Hybrid NLP Engine:** Combines multilingual semantic embeddings (`sentence-transformers`) with a deterministic keyword-fallback engine. If the AI is unsure, the keyword fallback catches colloquialisms (e.g., Egyptian Arabic like *"شوفلي الملفات"*).
+- **🖥️ System Monitoring:** Speak natural commands to check live CPU, RAM, Disk usage, and view the top running processes (powered by `psutil`).
+- **📝 Persistent Command History:** Logs every command with its timestamp, recognized intent, and final execution status (Completed, Rejected, Failed).
+- **🛡️ Security & Sandboxing:** 
+  - **Zero Direct Shell Execution:** Spoken text is never executed directly as a shell command; commands run as validated argument lists.
+  - **Strict Whitelisting:** Only explicitly allowed applications and system resources can be accessed.
+  - **Multi-Command Guard:** Blocks command chaining and injection characters (`;`, `&`, `and`, `ثم`). *Note: Smartly allows "and" if it's inside a quoted filename like "rock and roll".*
+  - **Destructive Action Protection:** Blocks mass-deletion wildcards (`all`, `كل`), blocks command options like `-rf` or `~`, and requires a GUI popup confirmation before deleting files or closing applications.
+
+---
+
+## 🎨 Dual-GUI Architecture (Tkinter & Modern Flet UI)
+
+Because the backend pipeline (`main.py`, `stt/`, `nlp/`, `validation/`, `execution/`, `tts/`) is decoupled from the presentation layer via an event-driven interface (`gui/events.py`), the project supports **two interchangeable frontends**:
+
+1. **Classic Desktop UI (`Tkinter` — Default on `main`):**
+   - Lightweight, zero-overhead native desktop interface (`main.py` & `gui/`) with background threading, RTL Arabic reshaping, and a live `Treeview` history log.
+2. **Modern Next-Gen UI (`Flet` — Available on [`feat/flet-modern-gui`](../../tree/feat/flet-modern-gui)):**
+   - An experimental modern interface (`main_flet.py` & `gui_flet/`) built with **Flet (Flutter for Python)** to elevate the visual experience and usability:
+     - **Bilingual RTL/LTR Interface:** Seamless switching between Arabic and English layouts without manual text reshaping hacks.
+     - **Real-Time Pipeline Visualizer:** Live step-by-step indicator (`STT ➔ NLP ➔ Validation ➔ Execution ➔ TTS`).
+     - **Live System Telemetry & Workspace Explorer:** Built-in CPU/RAM/Disk cards and a safe sandbox file browser (`~/VoiceLinuxWorkspace`).
 
 ---
 
@@ -48,21 +62,23 @@ Every voice command passes through 6 sequential stages orchestrated by `main.py`
 3. **Command Understanding (`nlp/understanding.py`):** The hybrid AI/Keyword engine matches the text to a known intent and extracts required parameters (e.g., `SHOW_SYSTEM_USAGE` -> `resource: cpu`).
 4. **Command Validation (`validation/validator.py`):** Checks that the intent and target are whitelisted, ensures paths stay inside `~/VoiceLinuxWorkspace`, and triggers confirmation dialogs for dangerous actions.
 5. **Linux Operation (`execution/`):** Runs the approved operation on Ubuntu via Python `os`, `pathlib`, `psutil`, and `subprocess` (`files.py`, `apps.py`, `system_info.py`, `runner.py`).
-6. **GUI & Voice Reply (`gui/` & `tts/`):** Displays the result in the `Tkinter` interface, logs the action in the history table, and speaks the response via `espeak-ng`.
+6. **GUI & Voice Reply (`gui/` or `gui_flet/` & `tts/`):** Displays the result in the active GUI, logs the action in the history view, and speaks the response via `espeak-ng`.
 
 ---
 
 ## 📂 Project Structure
 
-* `main.py` — Application entry point, model pre-warming & pipeline wiring
-* `stt/` — Audio capture (`recorder.py`), Whisper transcription (`transcriber.py`), evaluation (`evaluate.py`, `metrics.py`) & vocabulary (`vocabulary.py`)
-* `nlp/` — Intent definitions (`intents.py`) and hybrid semantic/keyword understanding (`understanding.py`)
-* `validation/` — Security checks, path sandboxing & parameter validation (`validator.py`)
-* `execution/` — OS operations: file handling (`files.py`), app control (`apps.py`), system metrics (`system_info.py`) & runner (`runner.py`)
-* `gui/` — Tkinter desktop app (`app.py`), Arabic reshaping (`arabic.py`), events (`events.py`) & stand-ins (`standins.py`)
-* `tts/` — Offline bilingual Text-to-Speech voice feedback (`speaker.py`)
-* `tests/` — Comprehensive `pytest` suite (`test_stt.py`, `test_nlp.py`, `test_validation_execution.py`, `test_files.py`, `test_apps.py`, `test_gui_support.py`, `test_tts.py`, `test_runner_integration.py`)
-* `setup_env.sh` & `requirements.txt` — Automated environment setup script and Python dependencies
+- `main.py` — Application entry point, model pre-warming & pipeline wiring (Tkinter UI)
+- `main_flet.py` — Alternative entry point for the modern Flet UI *(on `feat/flet-modern-gui`)*
+- `stt/` — Audio capture (`recorder.py`), Whisper transcription (`transcriber.py`), evaluation (`evaluate.py`, `metrics.py`) & vocabulary (`vocabulary.py`)
+- `nlp/` — Intent definitions (`intents.py`) and hybrid semantic/keyword understanding (`understanding.py`)
+- `validation/` — Security checks, path sandboxing & parameter validation (`validator.py`)
+- `execution/` — OS operations: file handling (`files.py`), app control (`apps.py`), system metrics (`system_info.py`) & runner (`runner.py`)
+- `gui/` — Classic Tkinter desktop app (`app.py`), Arabic reshaping (`arabic.py`), shared events (`events.py`) & stand-ins (`standins.py`)
+- `gui_flet/` — Modern bilingual Flet UI components & dashboard *(on `feat/flet-modern-gui`)*
+- `tts/` — Offline bilingual Text-to-Speech voice feedback (`speaker.py`)
+- `tests/` — Comprehensive `pytest` suite (`test_stt.py`, `test_nlp.py`, `test_validation_execution.py`, `test_files.py`, `test_apps.py`, `test_gui_support.py`, `test_tts.py`, `test_runner_integration.py`)
+- `setup_env.sh` & `requirements.txt` — Automated environment setup script and Python dependencies
 
 ---
 
@@ -93,7 +109,8 @@ Every voice command passes through 6 sequential stages orchestrated by `main.py`
 | **NLP / Embeddings** | `sentence-transformers` | Multilingual semantic intent matching (`paraphrase-multilingual-MiniLM-L12-v2`) |
 | **OS & Process API** | `subprocess`, `psutil`, `pathlib` | Safe command execution, file handling & system metrics |
 | **Text-to-Speech** | `espeak-ng` | Offline Arabic & English voice feedback |
-| **Graphical UI** | `Tkinter` (`arabic-reshaper`, `python-bidi`) | Desktop GUI with background threading & RTL Arabic support |
+| **Graphical UI (Primary)** | `Tkinter` (`arabic-reshaper`, `python-bidi`) | Lightweight desktop GUI with background threading & RTL Arabic support |
+| **Graphical UI (Modern)** | `Flet` *(on `feat/flet-modern-gui`)* | Modern RTL/LTR dashboard, live pipeline visualizer & telemetry |
 | **Testing** | `pytest` | Unit and integration test suite |
 
 ---
@@ -122,7 +139,15 @@ Clone the repository and run the setup script (or install via `venv`):
 
 ### 3. Running the Application
 
+**Option A — Classic Tkinter GUI (`main` branch):**
+
     python3 main.py
+
+**Option B — Modern Flet GUI (`feat/flet-modern-gui` branch):**
+
+    git checkout feat/flet-modern-gui
+    pip install flet
+    python3 main_flet.py
 
 *Note: On launch, the system pre-warms the STT and NLP models in the background. Once the status badge turns green (**Ready**), click **Listen** and speak your command.*
 
