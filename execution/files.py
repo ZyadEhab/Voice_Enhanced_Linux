@@ -1,24 +1,24 @@
 from __future__ import annotations
- 
+
 from dataclasses import dataclass, field
 from pathlib import Path
- 
+
 # The ONLY folder file operations may touch. Tests replace this value.
 WORKSPACE: Path = Path.home() / "VoiceLinuxWorkspace"
- 
+
 MAX_NAME_LENGTH = 100
 MAX_SPOKEN_ITEMS = 10  # do not read out hundreds of names
- 
- 
+
+
 @dataclass
 class OperationResult:
     """Result of one operation (shared shape from Section 9.2)."""
- 
+
     success: bool
     message: str
     items: list = field(default_factory=list)
- 
- 
+
+
 MESSAGES = {
     "en": {
         "name_empty": "The name is empty. Please say a name.",
@@ -57,17 +57,17 @@ MESSAGES = {
         "failed": "فشلت العملية.",
     },
 }
- 
- 
+
+
 def _msg(language: str, key: str, **values) -> str:
     table = MESSAGES.get(language, MESSAGES["en"])
     return table[key].format(**values)
- 
- 
+
+
 def _fail(language: str, key: str, **values) -> OperationResult:
     return OperationResult(False, _msg(language, key, **values), [])
- 
- 
+
+
 # --------------------------------------------------------------------------
 # Workspace
 # --------------------------------------------------------------------------
@@ -79,8 +79,8 @@ def ensure_workspace() -> Path:
     except OSError:
         pass  # e.g. filesystems without Unix permissions
     return WORKSPACE
- 
- 
+
+
 # --------------------------------------------------------------------------
 # Validation helpers
 # --------------------------------------------------------------------------
@@ -98,11 +98,11 @@ def validate_name(name) -> str | None:
     if len(name) > MAX_NAME_LENGTH:
         return "name_long"
     return None
- 
- 
+
+
 def resolve_in_workspace(name: str) -> Path | None:
     """Join name to the workspace, resolve it, and make sure it stays inside.
- 
+
     resolve() follows symlinks, so a link pointing outside is detected.
     Returns None if the final path is outside the workspace.
     """
@@ -111,8 +111,8 @@ def resolve_in_workspace(name: str) -> Path | None:
     if target == root or not target.is_relative_to(root):
         return None
     return target
- 
- 
+
+
 def _checked_path(name, language: str):
     """Validate a name and resolve it. Returns (path, None) or (None, error)."""
     problem = validate_name(name)
@@ -122,8 +122,8 @@ def _checked_path(name, language: str):
     if path is None:
         return None, _fail(language, "outside")
     return path, None
- 
- 
+
+
 # --------------------------------------------------------------------------
 # Operations
 # --------------------------------------------------------------------------
@@ -136,16 +136,16 @@ def list_files(language: str = "en") -> OperationResult:
         files = sorted(p.name for p in entries if not p.is_dir())
     except OSError:
         return _fail(language, "failed")
- 
+
     names = folders + files
     if not names:
         return OperationResult(True, _msg(language, "list_empty"), [])
- 
+
     spoken = ", ".join(names[:MAX_SPOKEN_ITEMS])
     message = _msg(language, "list_result", count=len(names), names=spoken)
     return OperationResult(True, message, names)
- 
- 
+
+
 def create_file(name, language: str = "en") -> OperationResult:
     """Create an empty file. Adds .txt if there is no extension. Never overwrites."""
     problem = validate_name(name)
@@ -154,7 +154,7 @@ def create_file(name, language: str = "en") -> OperationResult:
     name = name.strip()
     if not Path(name).suffix:
         name += ".txt"
- 
+
     try:
         ensure_workspace()
         path, error = _checked_path(name, language)
@@ -167,8 +167,8 @@ def create_file(name, language: str = "en") -> OperationResult:
     except OSError:
         return _fail(language, "failed")
     return OperationResult(True, _msg(language, "file_created", name=name), [name])
- 
- 
+
+
 def create_folder(name, language: str = "en") -> OperationResult:
     """Create a folder. Fails if it already exists."""
     try:
@@ -184,15 +184,16 @@ def create_folder(name, language: str = "en") -> OperationResult:
     return OperationResult(
         True, _msg(language, "folder_created", name=name.strip()), [name.strip()]
     )
- 
- 
+
+
 # --------------------------------------------------------------------------
 # Week 3: rename and delete
 # --------------------------------------------------------------------------
 def _find_existing(name, language: str):
     """Find an existing item inside the workspace.
- 
+
     "notes" also matches "notes.txt", because create_file adds .txt.
+    Falls back to case-insensitive matching for voice commands.
     Returns (path, None) or (None, error result).
     """
     problem = validate_name(name)
@@ -208,9 +209,19 @@ def _find_existing(name, language: str):
             return None, _fail(language, "outside")
         if path.exists():
             return path, None
+
+    # Case-insensitive fallback when Whisper capitalizes spoken filenames
+    if WORKSPACE.exists():
+        wanted = {c.lower() for c in candidates}
+        for entry in WORKSPACE.iterdir():
+            if entry.name.lower() in wanted:
+                path = resolve_in_workspace(entry.name)
+                if path is not None and path.exists():
+                    return path, None
+
     return None, _fail(language, "not_found", name=name)
- 
- 
+
+
 def rename_file(old_name, new_name, language: str = "en") -> OperationResult:
     """Rename a file or folder inside the workspace. Never overwrites."""
     try:
@@ -218,7 +229,7 @@ def rename_file(old_name, new_name, language: str = "en") -> OperationResult:
         source, error = _find_existing(old_name, language)
         if error:
             return error
- 
+
         problem = validate_name(new_name)
         if problem:
             return _fail(language, problem)
@@ -226,25 +237,25 @@ def rename_file(old_name, new_name, language: str = "en") -> OperationResult:
         # "rename notes to report" keeps the file's extension (.txt)
         if source.is_file() and not Path(new_name).suffix:
             new_name += source.suffix
- 
+
         target, error = _checked_path(new_name, language)
         if error:
             return error
         # Path.rename silently overwrites on Linux, so check first.
         if target.exists() or target.is_symlink():
             return _fail(language, "exists", name=new_name)
- 
+
         old_display = source.name
         source.rename(target)
     except OSError:
         return _fail(language, "failed")
     message = _msg(language, "renamed", old=old_display, new=new_name)
     return OperationResult(True, message, [new_name])
- 
- 
+
+
 def delete_file(name, language: str = "en") -> OperationResult:
     """Delete a file, or an EMPTY folder. Never deletes a folder's contents.
- 
+
     This function only deletes. Asking the user to confirm is the job of the
     validation layer and the GUI (DELETE_FILE needs confirmation).
     """
@@ -265,4 +276,3 @@ def delete_file(name, language: str = "en") -> OperationResult:
     return OperationResult(
         True, _msg(language, "deleted", name=deleted_name), [deleted_name]
     )
- 
