@@ -6,3 +6,6 @@ psutil
 arabic-reshaper
 python-bidi
 pytest
+
+# Optional: Modern GUI frontend (used in branch: feat/flet-modern-gui)
+# flet
