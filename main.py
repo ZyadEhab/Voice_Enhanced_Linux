@@ -8,27 +8,42 @@ Microphone -> STT -> NLP -> Validation -> Execution -> TTS & GUI
 """
 
 import queue
+import threading
 import time
+import numpy as np
 from pathlib import Path
-from typing import Optional
-
-from execution.runner import execute
-from gui.events import Confirm, Emit, Event
-from nlp.understanding import understand, warmup as warmup_nlp
-from stt.interface import transcribe
-from stt.recorder import record
-from stt.transcriber import _get_model as warmup_stt
-from tts.speaker import speak
-from validation.validator import validate
+from dataclasses import dataclass, field
+from typing import List, Any, Optional
 
 # Ensure safe working folder exists with owner-only permissions (0700 / drwx------)
 SAFE_WORKSPACE = Path.home() / "VoiceLinuxWorkspace"
-
 
 def init_safe_workspace() -> Path:
     SAFE_WORKSPACE.mkdir(parents=True, exist_ok=True)
     SAFE_WORKSPACE.chmod(0o700)
     return SAFE_WORKSPACE
+
+# --- Shared Data Structures ---
+@dataclass
+class ValidationResult:
+    allowed: bool
+    needs_confirmation: bool = False
+    reason: str = ""
+
+@dataclass
+class ExecutionResult:
+    success: bool
+    message: str
+    items: List[Any] = field(default_factory=list)
+
+# --- Real Module Imports ---
+from stt.recorder import record
+from stt.interface import transcribe
+from nlp.understanding import understand
+from validation.validator import validate
+from execution.runner import execute
+from tts.speaker import speak
+from gui.events import Event, Emit, Confirm
 
 
 def prewarm_models() -> None:
@@ -36,13 +51,14 @@ def prewarm_models() -> None:
     print("[System] Pre-warming AI models into RAM for instant response...")
     t0 = time.time()
     try:
-        warmup_nlp()
+        understand("show my files", "en")
         print("  -> [NLP] sentence-transformers model loaded in RAM.")
     except Exception as e:
         print(f"  -> [NLP] Warm-up note: {e}")
 
     try:
-        warmup_stt()
+        dummy_audio = np.zeros(8000, dtype=np.float32)
+        transcribe(dummy_audio, language="en")
         print("  -> [STT] faster-whisper (small) model loaded in RAM.")
     except Exception as e:
         print(f"  -> [STT] Warm-up note: {e}")
@@ -93,26 +109,18 @@ class VoicePipelineController:
             emit(Event("listening", "listening", "Listening for command..."))
             audio = record()
             if audio is None or len(audio) == 0:
-                msg = (
-                    "لم يتم التقاط صوت. حاول مرة أخرى."
-                    if lang == "ar"
-                    else "No speech detected. Please try again."
-                )
+                msg = "لم يتم التقاط صوت. حاول مرة أخرى." if lang == "ar" else "No speech detected. Please try again."
                 emit(Event("error", "no_speech", msg))
                 return
 
             # Stage 2: Speech-to-Text
             emit(Event("listening", "processing", "Transcribing speech..."))
             text, detected_lang = transcribe(audio, language=lang)
-            text = (text or "").strip(" .!?,؟،")
+            text = text.strip(" .!?,؟،")
             active_lang = detected_lang if detected_lang in ("en", "ar") else lang
 
-            if not text:
-                msg = (
-                    "لم أتمكن من التعرف على الكلام. يرجى الإعادة."
-                    if active_lang == "ar"
-                    else "Could not recognize speech. Please repeat."
-                )
+            if not text or not text.strip():
+                msg = "لم أتمكن من التعرف على الكلام. يرجى الإعادة." if active_lang == "ar" else "Could not recognize speech. Please repeat."
                 emit(Event("error", "unrecognized", msg))
                 return
 
@@ -127,8 +135,7 @@ class VoicePipelineController:
             if not val_res.allowed:
                 emit(Event("understanding", "rejected", intent_name))
                 emit(Event("execution", "rejected", val_res.reason))
-                # validator.py returns English reasons, so speak them in English
-                emit(Event("result", "en", val_res.reason))
+                emit(Event("result", active_lang, val_res.reason))
                 return
 
             if val_res.needs_confirmation:
@@ -137,19 +144,14 @@ class VoicePipelineController:
                 prompt = _build_confirm_prompt(intent_data, active_lang)
                 approved = confirm(prompt) if confirm is not None else False
                 if not approved:
-                    cancel_msg = (
-                        "تم إلغاء العملية."
-                        if active_lang == "ar"
-                        else "Operation cancelled by user."
-                    )
+                    cancel_msg = "تم إلغاء العملية." if active_lang == "ar" else "Operation cancelled by user."
                     emit(Event("execution", "cancelled", cancel_msg))
                     emit(Event("result", active_lang, cancel_msg))
                     return
-                emit(Event("understanding", "allowed", intent_name))
             else:
                 emit(Event("understanding", "allowed", intent_name))
 
-            # Stage 5: Linux Operation Execution
+            # Stage 5: Linux Operation Execution (passing both confirmed and language)
             emit(Event("execution", "running", intent_name))
             exec_res = execute(intent_data, confirmed=True, language=active_lang)
             exec_state = "completed" if exec_res.success else "failed"
