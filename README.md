@@ -29,7 +29,7 @@
 
 | Classic Desktop UI (`Tkinter` — `main`) | Modern Bilingual UI (`Flet` — `feat/flet-modern-gui`) |
 | :---: | :---: |
-| <img width="1917" height="826" alt="Tkinter UI" src="https://github.com/user-attachments/assets/0fbecf45-d1b-470a-b668-eee4734a04ee" /> | <img width="1917" height="823" alt="Flet UI" src="https://github.com/user-attachments/assets/aa47fcfe-5421-4122-94b4-4d546fdb2d5d" /> |
+| <img width="1917" height="826" alt="Tkinter UI" src="https://github.com/user-attachments/assets/0fbecf45-d11b-470a-b668-eee4734a04ee" /> | <img width="1917" height="823" alt="Flet UI" src="https://github.com/user-attachments/assets/aa47fcfe-5421-4122-94b4-4d546fdb2d5d" /> |
 
 ---
 
