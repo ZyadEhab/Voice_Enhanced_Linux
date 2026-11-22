@@ -27,11 +27,9 @@
 
 ## 🖥️ Interface Preview
 
-> *Add screenshots of your running Ubuntu application by dragging and dropping images directly into the GitHub editor:*
-
 | Classic Desktop UI (`Tkinter` — `main`) | Modern Bilingual UI (`Flet` — `feat/flet-modern-gui`) |
 | :---: | :---: |
-| *Screenshot of Tkinter UI* | *Screenshot of Flet RTL/LTR UI* |
+| <img width="1917" height="826" alt="Tkinter UI" src="https://github.com/user-attachments/assets/0fbecf45-d1b-470a-b668-eee4734a04ee" /> | <img width="1917" height="823" alt="Flet UI" src="https://github.com/user-attachments/assets/aa47fcfe-5421-4122-94b4-4d546fdb2d5d" /> |
 
 ---
 
